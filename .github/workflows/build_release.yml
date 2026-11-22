@@ -1,1 +1,51 @@
+name: Build and Release r8-dedup
 
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install MinGW-w64 cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Build Linux x86-64 binary
+        run: |
+          gcc -std=c11 -O2 -march=x86-64 -mtune=generic -Wall -Wextra -Wpedantic -Werror -o r8-dedup-linux-x86_64 src/main.c src/scanner.c src/hasher.c
+
+      - name: Build Windows x86-64 binary
+        run: |
+          x86_64-w64-mingw32-gcc -std=c11 -O2 -march=x86-64 -mtune=generic -Wall -Wextra -Wpedantic -Werror -static -o r8-dedup-windows-x86_64.exe src/main.c src/scanner.c src/hasher.c
+
+      - name: Smoke test duplicate detection
+        run: |
+          mkdir -p /tmp/r8_dedup_test/sub
+          printf "R8Force Duplicate Payload 1234567890" > /tmp/r8_dedup_test/file1.bin
+          printf "R8Force Duplicate Payload 1234567890" > /tmp/r8_dedup_test/sub/file2.bin
+          printf "R8Force Unique Content 000000000000" > /tmp/r8_dedup_test/unique.bin
+          ./r8-dedup-linux-x86_64 /tmp/r8_dedup_test --no-color
+          rm -rf /tmp/r8_dedup_test
+
+      - name: Publish Permanent GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Release (Linux & Windows)
+          body: Automated cross-platform C11 builds by R8Force (compatible with all x86-64 CPUs).
+          make_latest: true
+          files: |
+            r8-dedup-linux-x86_64
+            r8-dedup-windows-x86_64.exe
